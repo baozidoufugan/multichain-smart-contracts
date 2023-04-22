@@ -36,6 +36,7 @@ contract AppDemo is IApp, AppBase {
             FLAG_PAY_FEE_ON_DEST = 2 (pay fee on the destination chain, otherwise pay fee on source chain)
             FLAG_ALLOW_FALLBACK = 4 (allow fallback if cross chain interaction failed)
     */
+    //跨链入口处。被外部用户调用，开启跨链之旅
     function callout(
         string calldata message,
         address receiver,
@@ -46,6 +47,7 @@ contract AppDemo is IApp, AppBase {
 
         uint256 oldCoinBalance;
         if (msg.value > 0) {
+            //此时balance里时包含了这次交易时的金额。
             oldCoinBalance = address(this).balance - msg.value;
         }
 
@@ -63,7 +65,9 @@ contract AppDemo is IApp, AppBase {
             ""
         );
 
+        //返还多余的钱。
         if (msg.value > 0) {
+            //此时newCoinBalance，应该是已经扣除了手续费。
             uint256 newCoinBalance = address(this).balance;
             if (newCoinBalance > oldCoinBalance) {
                 // return remaining fees

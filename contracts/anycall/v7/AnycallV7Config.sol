@@ -38,6 +38,7 @@ contract AnycallV7Config is IAnycallConfig, IFeePool {
     uint256 constant EXECUTION_OVERHEAD = 100000;
 
     // key is app address
+    //跨链协议合约地址 -> appId(代表了跨链调用方)
     mapping(address => string) public appIdentifier;
 
     // key is appID, a unique identifier for each project
@@ -45,11 +46,15 @@ contract AnycallV7Config is IAnycallConfig, IFeePool {
     mapping(string => mapping(address => bool)) public appExecWhitelist;
     mapping(string => bool) public appBlacklist;
     mapping(uint256 => SrcFeeConfig) public srcDefaultFees; // key is chainID
+    //appId,srcFeeConfig
     mapping(string => mapping(uint256 => SrcFeeConfig)) public srcCustomFees;
+    //默认的收费模式,appId,mode
     mapping(string => uint256) public appDefaultModes;
+    //自定义的mode. appId,toChainId,mode
     mapping(string => mapping(uint256 => uint256)) public appCustomModes;
 
     mapping(address => bool) public isAdmin;
+    //管理员集合
     address[] public admins;
 
     address public mpc;
@@ -60,7 +65,7 @@ contract AnycallV7Config is IAnycallConfig, IFeePool {
     uint256 public minReserveBudget;
     mapping(address => uint256) public executionBudget;
     FeeData private _feeData;
-
+    //？？不知道干啥
     address public anycallContract;
 
     /// @dev Access control function
@@ -144,30 +149,38 @@ contract AnycallV7Config is IAnycallConfig, IFeePool {
         uint256 _toChainID,
         uint256 _flags
     ) external view returns (string memory _appID, uint256 _srcFees) {
+        //获取应用层所注册的appId,调用者一定是AnycallV7Upgradeable的合约地址,
         _appID = appIdentifier[_sender];
+        //判断调用方是否已经禁用
         require(!appBlacklist[_appID], "blacklist");
-
+        //判断mode是否是permissionless状态,即mode是奇数.
         bool _permissionlessMode = _isSet(mode, PERMISSIONLESS_MODE);
         if (!_permissionlessMode) {
-            require(appExecWhitelist[_appID][_sender], "no permission");
+            //如果是不是permissionlessMode，则判断这个appId下的应用合约在不在执行白名单里
+            require(appExecWhitelist[_appID][_sender], "no permissqion");
         }
 
+        //判断Config是否开启了收费,即mode是奇数
         if (!_isSet(mode, FREE_MODE)) {
             AppConfig storage config = appConfig[_appID];
+            //如果是无许可状态，则这个appId的理应是没有签约任何应用层合约，即地址是0
+            //如果是有许可，则本次调用发起者就应该是appId所签约的应用层合约地址
             require(
                 (_permissionlessMode && config.app == address(0)) ||
                     _sender == config.app,
                 "no app"
             );
 
+            //如果支持flag合，则合并。//意思是将本次调用所传递的flag和签约的flag进行合并。求同存异。
             if (
                 _isSet(_flags, AnycallFlags.FLAG_MERGE_CONFIG_FLAGS) &&
                 config.app == _sender
             ) {
                 _flags |= config.appFlags;
             }
-
+            //判断收费模式是否是原链收费,即flag的二进制最后第二位是1
             if (!_isSet(_flags, AnycallFlags.FLAG_PAY_FEE_ON_DEST)) {
+                //计算原链需要收取的手续费.收费计算公式:baseFees + msg.data.length*feesPerByte
                 _srcFees = _calcSrcFees(_appID, _toChainID, _data.length);
             }
         }
@@ -535,7 +548,7 @@ contract AnycallV7Config is IAnycallConfig, IFeePool {
         SrcFeeConfig memory defaultFees = srcDefaultFees[_toChainID];
         uint256 defaultBaseFees = defaultFees.baseFees;
         uint256 defaultFeesPerBytes = defaultFees.feesPerByte;
-
+        //走到这里是因为配置了自定义的费率,但是没有开启使用,这时候会和默认的费率相比较,取其大者
         uint256 baseFees = (customBaseFees > defaultBaseFees)
             ? customBaseFees
             : defaultBaseFees;

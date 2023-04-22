@@ -41,6 +41,7 @@ contract AnyCallV7Upgradeable is IAnycallProxy, Initializable {
     address public executor;
 
     // anycall config contract
+    //IAnycallConfig的合约地址
     address public config;
 
     mapping(bytes32 => bytes32) public retryExecRecords;
@@ -201,9 +202,10 @@ contract AnyCallV7Upgradeable is IAnycallProxy, Initializable {
         bytes calldata _extdata
     ) external payable virtual whenNotPaused {
         require(_flags < AnycallFlags.FLAG_EXEC_START_VALUE, "invalid flags");
+        //获取手续费，这里的msg.sender是AppDemo
         (string memory _appID, uint256 _srcFees) = IAnycallConfig(config)
             .checkCall(msg.sender, _data, _toChainID, _flags);
-
+        //支付手续费
         _paySrcFees(_srcFees);
 
         nonce++;
@@ -276,22 +278,28 @@ contract AnyCallV7Upgradeable is IAnycallProxy, Initializable {
         chargeDestFee(_to, _ctx.flags)
         onlyMPC
     {
+        //检测是否可执，即检查账户里前是否足够
         IAnycallConfig(config).checkExec(_appID, _ctx.from, _to);
 
+        //生产幂等建
         bytes32 uniqID = calcUniqID(
             _ctx.txhash,
             _ctx.from,
             _ctx.fromChainID,
             _ctx.nonce
         );
+        //幂等校验
         require(!execCompleted[uniqID], "exec completed");
 
+        //执行
         bool success = _execute(_to, _data, _ctx, _extdata);
 
         // set exec completed (dont care success status)
         execCompleted[uniqID] = true;
 
+        //如果执行失败
         if (!success) {
+            //如果允许执行FALLBACK函数，则执行
             if (_isSet(_ctx.flags, AnycallFlags.FLAG_ALLOW_FALLBACK)) {
                 // Call the fallback on the originating chain
                 nonce++;
@@ -307,6 +315,7 @@ contract AnyCallV7Upgradeable is IAnycallProxy, Initializable {
                     ""
                 );
             } else {
+                //不允许执行fallback函数，则存储本次调用的数据
                 // Store retry record and emit a log
                 bytes memory data = _data; // fix Stack too deep
                 retryExecRecords[uniqID] = keccak256(abi.encode(_to, data));
